@@ -338,7 +338,7 @@ export const CreateContentModal: React.FC<CreateContentModalProps> = ({ onClose 
                   <span>Post Now (Immediate Queue)</span>
                 </div>
                 <div className="text-[11px] text-slate-500 mt-1">
-                  Pushes job immediately to local AutoSocial worker
+                  Puts the job into the secure cloud queue for the local AutoSocial worker
                 </div>
               </button>
 
@@ -355,7 +355,7 @@ export const CreateContentModal: React.FC<CreateContentModalProps> = ({ onClose 
                   <Calendar className="w-4 h-4 text-slate-700" />
                   <span>Schedule for Later</span>
                 </div>
-                <div className="text-[11px] text-slate-500 mt-1">Set date and time for automatic publishing</div>
+                <div className="text-[11px] text-slate-500 mt-1">Set date and time for the cloud queue to release the job</div>
               </button>
             </div>
 
