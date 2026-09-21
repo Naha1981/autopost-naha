@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
 import { applicationDefault, cert, getApps, initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
+import { getStorage } from 'firebase-admin/storage';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -34,6 +35,7 @@ const firebaseApp = getApps().length
     });
 
 const db = getFirestore(firebaseApp, FIRESTORE_DATABASE_ID);
+const bucket = getStorage(firebaseApp).bucket();
 const app = express();
 app.use(express.json({ limit: '2mb' }));
 
@@ -153,6 +155,21 @@ async function recoverExpiredJobs() {
   }
 }
 
+async function enrichContentForWorker(content) {
+  if (!content?.mediaStorageKey) return content;
+  try {
+    const file = bucket.file(content.mediaStorageKey);
+    const signed = await file.getSignedUrl({
+      version:'v4',
+      action:'read',
+      expires:Date.now() + 15 * 60 * 1000,
+    });
+    return { ...content, workerMediaUrl:signed[0] };
+  } catch (error) {
+    throw new Error('Could not create a temporary media URL for worker download: '+error.message);
+  }
+}
+
 async function findNextClaimableJob() {
   const candidates = [];
   for (const status of ['QUEUED','RETRY_PENDING']) {
@@ -213,10 +230,11 @@ app.get('/api/worker/jobs/poll',requireWorker,async(req,res)=>{
     const next = await findNextClaimableJob();
     if (!next) return res.json({ok:true,job:null});
     const content = await getContent(next.data.contentId);
+    const workerContent = await enrichContentForWorker({ id:content.ref.id, ...content.data });
     res.json({
       ok:true,
       job:{id:next.ref.id,...next.data},
-      content:{id:content.ref.id,...content.data}
+      content:workerContent
     });
   } catch(error) {
     res.status(400).json({ok:false,error:error.message});
