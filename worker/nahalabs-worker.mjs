@@ -226,24 +226,27 @@ async function executeJob(job,content){
     progressPct:10
   });
 
-  if(!PLATFORMS.has(job.platform))throw new Error('Unsupported platform: '+job.platform);
-
-  const account=await resolveAutoSocialAccount(job.accountHandle,job.autoSocialAccountId);
-  await selectAutoSocialAccount(account.id);
-
-  const status=await getPlatformStatus(job.platform);
-  if(status.isPosting){
-    throw new Error('AutoSocial '+job.platform+' is already publishing another post for account '+account.id+'.');
-  }
-
-  const wasRunning=Boolean(status.running);
-  if(wasRunning)await stopPlatform(job.platform);
-
-  const dirs=await ensureQueueDirs(account.id,job.platform);
-  const holdDir=await holdExistingQueue(account.id,job.platform,job.id);
-  let stagedVideo='';
+  let wasRunning=false;
+  let dirs=null;
+  let holdDir=null;
 
   try{
+    if(!PLATFORMS.has(job.platform))throw new Error('Unsupported platform: '+job.platform);
+
+    const account=await resolveAutoSocialAccount(job.accountHandle,job.autoSocialAccountId);
+    await selectAutoSocialAccount(account.id);
+
+    const status=await getPlatformStatus(job.platform);
+    if(status.isPosting){
+      throw new Error('AutoSocial '+job.platform+' is already publishing another post for account '+account.id+'.');
+    }
+
+    wasRunning=Boolean(status.running);
+    if(wasRunning)await stopPlatform(job.platform);
+
+    dirs=await ensureQueueDirs(account.id,job.platform);
+    holdDir=await holdExistingQueue(account.id,job.platform,job.id);
+
     await postEvent(job,{
       status:'CLAIMED',
       step:'MEDIA_DOWNLOAD',
@@ -251,9 +254,11 @@ async function executeJob(job,content){
       progressPct:25
     });
 
-    if(!content.videoUrl)throw new Error('Content does not contain a media URL.');
-    stagedVideo=await downloadMedia(content.workerMediaUrl||content.videoUrl,dirs.pending,job.id);
+    if(!content.workerMediaUrl&&!content.videoUrl){
+      throw new Error('Content does not contain a media URL.');
+    }
 
+    const stagedVideo=await downloadMedia(content.workerMediaUrl||content.videoUrl,dirs.pending,job.id);
     const captionPath=stagedVideo.slice(0,stagedVideo.lastIndexOf('.'))+'.description';
     await fs.writeFile(captionPath,content.caption||'','utf8');
 
@@ -273,10 +278,13 @@ async function executeJob(job,content){
 
     const result=await runPlatformOnce(job.platform);
 
-    if(result.skipped)throw new Error(result.reason||'AutoSocial skipped the publishing run.');
+    if(result.skipped){
+      throw new Error(result.reason||'AutoSocial skipped the publishing run.');
+    }
 
     if(!result.ok){
       const archiveFailure=String(result.error||'').includes('Video posted, but could not archive file from queue.');
+
       if(archiveFailure){
         await postEvent(job,{
           status:'PUBLISHED',
@@ -290,12 +298,17 @@ async function executeJob(job,content){
         });
         return;
       }
+
       throw new Error(result.error||'AutoSocial reported a publishing failure.');
     }
 
     const movedVideo=String(result.movedVideo||'');
     if(movedVideo&&!movedVideo.includes(job.id)){
-      throw new Error('AutoSocial reported a different queue item ('+path.basename(movedVideo)+') instead of '+path.basename(stagedVideo)+'.');
+      throw new Error(
+        'AutoSocial reported a different queue item ('+
+        path.basename(movedVideo)+
+        ') instead of the expected NahaLabs job '+job.id+'.'
+      );
     }
 
     await postEvent(job,{
@@ -306,26 +319,42 @@ async function executeJob(job,content){
       level:'success'
     });
 
-    await finishJob(job,{message:'AutoSocial completed the publishing run successfully.'});
+    await finishJob(job,{
+      message:'AutoSocial completed the publishing run successfully.'
+    });
   }catch(error){
     const message=error?.message||'Unknown local publishing error.';
     try{
-      await postEvent(job,{status:'FAILED',step:'WORKER_ERROR',message,progressPct:70,level:'error'});
+      await postEvent(job,{
+        status:'FAILED',
+        step:'WORKER_ERROR',
+        message,
+        progressPct:70,
+        level:'error'
+      });
       await failJob(job,message,70);
     }catch(reportError){
       log('Could not report failure for '+job.id+': '+reportError.message);
     }
     throw error;
   }finally{
-    await restoreHeldQueue(holdDir,dirs.pending);
-    if(wasRunning){
-      try{await startPlatform(job.platform)}
-      catch(restartError){log('AutoSocial '+job.platform+' scheduler could not be restarted: '+restartError.message)}
+    if(holdDir&&dirs){
+      await restoreHeldQueue(holdDir,dirs.pending).catch(error=>{
+        log('Could not restore held queue for '+job.id+': '+error.message);
+      });
     }
+
+    if(wasRunning){
+      try{
+        await startPlatform(job.platform);
+      }catch(restartError){
+        log('AutoSocial '+job.platform+' scheduler could not be restarted: '+restartError.message);
+      }
+    }
+
     await heartbeat('ONLINE',0).catch(error=>log('Heartbeat after job '+job.id+' failed: '+error.message));
   }
 }
-
 async function claimJob(job){
   return cloudRequest('/api/worker/jobs/'+encodeURIComponent(job.id)+'/claim',{
     method:'POST',
