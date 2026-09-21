@@ -257,6 +257,30 @@ app.post('/api/worker/heartbeat', authenticateWorker, async function (req, res) 
     };
 
     await db.collection('workers').doc(workerId).set(heartbeat, { merge: true });
+
+    if (heartbeat.accounts.length) {
+      const accountsSnapshot = await db.collection('social_accounts')
+        .where('organizationId', '==', WORKER_ORGANIZATION_ID)
+        .get();
+      const byKey = new Map();
+      accountsSnapshot.docs.forEach(function (item) {
+        const data = item.data();
+        byKey.set(String(data.platform || '').toLowerCase() + ':' + String(data.handle || '').toLowerCase(), item.ref);
+      });
+
+      const batch = db.batch();
+      for (const account of heartbeat.accounts) {
+        const reference = byKey.get(String(account.platform || '').toLowerCase() + ':' + String(account.handle || '').toLowerCase());
+        if (!reference) continue;
+        batch.set(reference, {
+          connectionStatus: account.connected ? 'CONNECTED' : 'NEEDS_REAUTH',
+          localWorkerId: workerId,
+          lastActivityAt: nowIso(),
+        }, { merge: true });
+      }
+      await batch.commit();
+    }
+
     res.json({ acknowledged: true, workerId });
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message });
