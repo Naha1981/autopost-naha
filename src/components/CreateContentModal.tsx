@@ -28,6 +28,7 @@ export const CreateContentModal: React.FC<CreateContentModalProps> = ({ onClose 
   const [title, setTitle] = useState('');
   const [caption, setCaption] = useState('');
   const [videoUrl, setVideoUrl] = useState(SAMPLE_VIDEOS[0].url);
+  const [videoStorageKey, setVideoStorageKey] = useState('');
   const [videoFileName, setVideoFileName] = useState(SAMPLE_VIDEOS[0].title);
   const [platforms, setPlatforms] = useState<Platform[]>(['instagram', 'tiktok', 'youtube']);
   const [scheduleMode, setScheduleMode] = useState<'now' | 'schedule'>('now');
@@ -58,6 +59,7 @@ export const CreateContentModal: React.FC<CreateContentModalProps> = ({ onClose 
     try {
       const result = await mediaStorageService.upload(file);
       setVideoUrl(result.url);
+      setVideoStorageKey(result.storageKey);
       setVideoFileName(result.fileName);
       if (!title) {
         setTitle(file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' '));
@@ -82,6 +84,7 @@ export const CreateContentModal: React.FC<CreateContentModalProps> = ({ onClose 
           title: title.trim(),
           caption: caption.trim(),
           videoUrl,
+          mediaStorageKey: videoStorageKey || undefined,
           platforms,
           scheduledAt: scheduleMode === 'schedule' && scheduledAt ? new Date(scheduledAt).toISOString() : null,
         },
@@ -214,6 +217,7 @@ export const CreateContentModal: React.FC<CreateContentModalProps> = ({ onClose 
                     type="button"
                     onClick={() => {
                       setVideoUrl(vid.url);
+                      setVideoStorageKey('');
                       setVideoFileName(vid.title);
                       if (!title) setTitle(vid.title);
                     }}
