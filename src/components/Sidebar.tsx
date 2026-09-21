@@ -32,10 +32,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onSelectTab }) => 
   const { contentList, jobs, accounts, publisherMode } = useApp();
 
   const queuedOrPublishingCount = jobs.filter(
-    (j) => j.status === 'QUEUED' || j.status === 'PUBLISHING' || j.status === 'STAGED'
+    (j) => j.status === 'QUEUED' || j.status === 'RETRY_PENDING' || j.status === 'PUBLISHING' || j.status === 'STAGED'
   ).length;
 
-  const failedCount = jobs.filter((j) => j.status === 'FAILED').length;
+  const failedCount = jobs.filter((j) => j.status === 'FAILED' || j.status === 'FAILED_PERMANENT').length;
 
   const NAV_ITEMS: Array<{
     id: NavTab;
