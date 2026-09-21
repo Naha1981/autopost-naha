@@ -32,6 +32,7 @@ const firebaseApp = getApps().length
   : initializeApp({
       credential: firebaseCredential,
       projectId: process.env.FIREBASE_PROJECT_ID || 'flavourly-27292',
+      storageBucket: process.env.FIREBASE_STORAGE_BUCKET || 'flavourly-27292.firebasestorage.app',
     });
 
 const db = getFirestore(firebaseApp, FIRESTORE_DATABASE_ID);
