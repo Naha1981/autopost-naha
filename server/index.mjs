@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import admin from 'firebase-admin';
 import { getFirestore } from 'firebase-admin/firestore';
+import { getStorage } from 'firebase-admin/storage';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -29,12 +30,18 @@ try {
     const credential = json
       ? admin.credential.cert(JSON.parse(json))
       : admin.credential.applicationDefault();
-    app = admin.initializeApp({ credential, projectId: PROJECT_ID });
+    app = admin.initializeApp({
+      credential,
+      projectId: PROJECT_ID,
+      storageBucket: process.env.FIREBASE_STORAGE_BUCKET || 'flavourly-27292.firebasestorage.app',
+    });
   }
   db = getFirestore(app, DATABASE_ID);
 } catch (error) {
   console.warn('[server] Firebase Admin is not ready: ' + error.message);
 }
+
+const storageBucket = admin.apps.length ? getStorage(admin.app()).bucket() : null;
 
 const app = express();
 app.disable('x-powered-by');
@@ -88,6 +95,18 @@ function recomputeGlobalStatus(content) {
   if (statuses.some(function (status) { return ['QUEUED', 'RETRY_PENDING'].includes(status); })) return 'QUEUED';
   if (statuses.some(function (status) { return status === 'PUBLISHED'; })) return 'PARTIAL';
   return 'DRAFT';
+}
+
+async function createWorkerMediaUrl(storageKey) {
+  if (!storageKey) return null;
+  if (!storageBucket) throw new Error('Firebase Storage is not configured on the server.');
+  const file = storageBucket.file(storageKey);
+  const signed = await file.getSignedUrl({
+    version: 'v4',
+    action: 'read',
+    expires: Date.now() + 30 * 60 * 1000,
+  });
+  return signed[0];
 }
 
 async function addEvent(job, status, step, message, progressPct, level) {
@@ -318,6 +337,7 @@ app.get('/api/worker/jobs/poll', authenticateWorker, async function (req, res) {
         platform: job.platform,
         accountHandle: job.accountHandle,
         videoUrl: content.videoUrl,
+        mediaDownloadUrl: content.mediaStorageKey ? await createWorkerMediaUrl(content.mediaStorageKey) : content.videoUrl,
         mediaStorageKey: content.mediaStorageKey || null,
         videoFilename: content.mediaStorageKey ? String(content.mediaStorageKey).split('/').pop() : job.id + '.mp4',
         caption: content.caption || '',
