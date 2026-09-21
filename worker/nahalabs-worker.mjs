@@ -252,7 +252,7 @@ async function executeJob(job,content){
     });
 
     if(!content.videoUrl)throw new Error('Content does not contain a media URL.');
-    stagedVideo=await downloadMedia(content.videoUrl,dirs.pending,job.id);
+    stagedVideo=await downloadMedia(content.workerMediaUrl||content.videoUrl,dirs.pending,job.id);
 
     const captionPath=stagedVideo.slice(0,stagedVideo.lastIndexOf('.'))+'.description';
     await fs.writeFile(captionPath,content.caption||'','utf8');
