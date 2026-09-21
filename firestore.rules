@@ -1,48 +1,55 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    function isAuthenticated() {
-      return request.auth != null;
+    function signedIn() { return request.auth != null; }
+    function userOrgId() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationId;
     }
-    
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
-    }
+    function sameOrg(orgId) { return signedIn() && orgId == userOrgId(); }
+    function sameExistingOrg() { return signedIn() && resource.data.organizationId == userOrgId(); }
 
-    // Users collection
     match /users/{userId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if signedIn() && request.auth.uid == userId;
     }
-
-    // Organizations collection
     match /organizations/{orgId} {
-      allow read, write: if isAuthenticated();
+      allow read: if sameOrg(orgId);
+      allow create: if signedIn() && orgId == request.resource.data.id && request.resource.data.createdBy == request.auth.uid;
+      allow update, delete: if sameOrg(orgId);
     }
-
-    // Brands collection
     match /brands/{brandId} {
-      allow read, write: if isAuthenticated();
+      allow read: if sameOrg(resource.data.organizationId);
+      allow create: if sameOrg(request.resource.data.organizationId);
+      allow update: if sameExistingOrg() && sameOrg(request.resource.data.organizationId);
+      allow delete: if sameExistingOrg();
     }
-
-    // Social accounts collection (Notice: NO social passwords stored here!)
     match /social_accounts/{accountId} {
-      allow read, write: if isAuthenticated();
+      allow read: if sameOrg(resource.data.organizationId);
+      allow create: if sameOrg(request.resource.data.organizationId);
+      allow update: if sameExistingOrg() && sameOrg(request.resource.data.organizationId);
+      allow delete: if sameExistingOrg();
     }
-
-    // Content collection
     match /content/{contentId} {
-      allow read, write: if isAuthenticated();
+      allow read: if sameOrg(resource.data.organizationId);
+      allow create: if sameOrg(request.resource.data.organizationId);
+      allow update: if sameExistingOrg() && sameOrg(request.resource.data.organizationId);
+      allow delete: if sameExistingOrg();
     }
-
-    // Publishing jobs queue
     match /publishing_jobs/{jobId} {
-      allow read, write: if isAuthenticated();
+      allow read: if sameOrg(resource.data.organizationId);
+      allow create: if sameOrg(request.resource.data.organizationId);
+      allow update: if sameExistingOrg() && sameOrg(request.resource.data.organizationId);
+      allow delete: if sameExistingOrg();
     }
-
-    // Publishing events telemetry stream
     match /publishing_events/{eventId} {
-      allow read, write: if isAuthenticated();
+      allow read: if sameOrg(resource.data.organizationId);
+      allow create: if sameOrg(request.resource.data.organizationId);
+      allow update: if sameExistingOrg() && sameOrg(request.resource.data.organizationId);
+      allow delete: if sameExistingOrg();
+    }
+    match /worker_heartbeats/{workerId} {
+      allow read: if sameOrg(resource.data.organizationId);
+      allow write: if false;
     }
   }
 }

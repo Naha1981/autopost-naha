@@ -2,11 +2,16 @@ export type Platform = 'instagram' | 'tiktok' | 'youtube';
 
 export type GlobalPublishStatus =
   | 'DRAFT'
+  | 'IN_REVIEW'
+  | 'CHANGES_REQUESTED'
+  | 'APPROVED'
   | 'SCHEDULED'
   | 'QUEUED'
   | 'PUBLISHING'
   | 'PUBLISHED'
   | 'FAILED'
+  | 'RETRY_PENDING'
+  | 'FAILED_PERMANENT'
   | 'PARTIAL';
 
 export type PlatformPublishStatus =
@@ -16,7 +21,9 @@ export type PlatformPublishStatus =
   | 'STAGED'
   | 'PUBLISHING'
   | 'PUBLISHED'
-  | 'FAILED';
+  | 'FAILED'
+  | 'RETRY_PENDING'
+  | 'FAILED_PERMANENT';
 
 export interface UserProfile {
   uid: string;
@@ -31,7 +38,9 @@ export interface Organization {
   id: string;
   name: string;
   slug: string;
-  createdAt: string;
+  createdAt?: string;
+  updatedAt?: string;
+  createdBy?: string;
 }
 
 export interface Brand {
@@ -48,12 +57,14 @@ export interface Brand {
 
 export interface SocialAccount {
   id: string;
+  organizationId?: string;
   brandId: string;
   platform: Platform;
   handle: string;
   accountName: string;
   connectionStatus: 'CONNECTED' | 'DISCONNECTED' | 'NEEDS_REAUTH' | 'PENDING_LOCAL_SETUP';
   localWorkerId?: string;
+  autoSocialAccountId?: string;
   lastActivityAt?: string;
   avatarUrl?: string;
   autoSocialQueuePath?: string;
@@ -61,9 +72,11 @@ export interface SocialAccount {
 
 export interface ContentItem {
   id: string;
+  organizationId?: string;
   brandId: string;
   title: string;
   videoUrl: string;
+  mediaStorageKey?: string;
   thumbnailUrl?: string;
   caption: string;
   platforms: Platform[];
@@ -79,18 +92,23 @@ export interface ContentItem {
 
 export interface PublishingJob {
   id: string;
+  organizationId?: string;
   contentId: string;
   brandId: string;
   platform: Platform;
   accountHandle: string;
+  autoSocialAccountId?: string;
   status: PlatformPublishStatus;
   workerId?: string;
   workerMachineName?: string;
   claimedAt?: string;
+  leaseExpiresAt?: string;
   publishedAt?: string;
   failedAt?: string;
   errorMessage?: string;
   retryCount: number;
+  scheduledAt?: string | null;
+  readyAt?: string;
   postUrl?: string;
   createdAt: string;
   updatedAt: string;
@@ -98,6 +116,7 @@ export interface PublishingJob {
 
 export interface PublishingEvent {
   id: string;
+  organizationId?: string;
   jobId: string;
   contentId: string;
   platform: Platform;
@@ -111,11 +130,13 @@ export interface PublishingEvent {
 
 export interface WorkerHeartbeat {
   workerId: string;
+  organizationId: string;
   machineName: string;
   version: string;
   status: 'ONLINE' | 'BUSY' | 'OFFLINE';
   lastSeenAt: string;
   installedPlatforms: Platform[];
   autoSocialPath: string;
+  autoSocialUrl?: string;
   activeJobsCount: number;
 }

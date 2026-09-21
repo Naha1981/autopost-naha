@@ -1,27 +1,32 @@
-# NahaLabs Local Worker Setup on Operator Windows Laptop
+# NahaLabs Local Worker
 
-This directory contains the lightweight worker daemon that runs directly beside your **AutoSocial** installation on your Windows machine.
+Private Windows bridge between the NahaLabs cloud queue and the local AutoSocial installation.
 
-## Prerequisites
-1. **AutoSocial** installed (e.g. at `C:\NahaLabs\AutoSocial`).
-2. Node.js 18+ installed.
-3. Persistent browser profiles initialized in `.profiles/<account>/<platform>`.
-
-## Running the Worker
-
-```powershell
-# Set environment variables
-$env:NAHALABS_CLOUD_URL = "https://your-nahalabs-cloud.run.app"
-$env:WORKER_TOKEN = "your_generated_worker_token"
-$env:AUTOSOCIAL_PATH = "C:\NahaLabs\AutoSocial"
-
-# Start the worker
-node nahalabs-worker.mjs start
+```text
+NahaLabs cloud
+   -> HTTPS poll/claim
+Windows Worker
+   -> localhost
+AutoSocial
+   -> Playwright profiles
+Social platforms
 ```
 
-## How AutoSocial Is Invoked
-1. The cloud app queues publishing jobs with video download tokens.
-2. This worker downloads the video file and writes it to `C:\NahaLabs\AutoSocial\queue\<account>\<platform>\pending\<jobId>.mp4`.
-3. It creates the accompanying `<jobId>.json` metadata file containing caption, tags, and schedule info.
-4. It calls AutoSocial's internal runner or lets AutoSocial's directory watcher pick it up.
-5. It streams live progress back to NahaLabs Cloud.
+The worker keeps social credentials and browser sessions local. It does not open an inbound port.
+
+## Setup
+
+1. Copy `worker/.env.example` to `worker/.env`.
+2. Set the cloud URL and worker secret.
+3. Point `AUTOSOCIAL_PATH` at the local AutoSocial folder.
+4. Start AutoSocial on `127.0.0.1:3000`.
+5. Run `node worker/nahalabs-worker.mjs test-connection`.
+6. Run `node worker/nahalabs-worker.mjs start`.
+
+## Account login
+
+```powershell
+node worker\\nahalabs-worker.mjs login --account <account-name> --platform instagram
+node worker\\nahalabs-worker.mjs login --account <account-name> --platform tiktok
+node worker\\nahalabs-worker.mjs login --account <account-name> --platform youtube
+```
