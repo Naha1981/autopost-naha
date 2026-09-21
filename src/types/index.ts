@@ -1,13 +1,23 @@
 export type Platform = 'instagram' | 'tiktok' | 'youtube';
 
+export type WorkflowStatus =
+  | 'DRAFT'
+  | 'IN_REVIEW'
+  | 'CHANGES_REQUESTED'
+  | 'APPROVED';
+
 export type GlobalPublishStatus =
   | 'DRAFT'
+  | 'IN_REVIEW'
+  | 'CHANGES_REQUESTED'
+  | 'APPROVED'
   | 'SCHEDULED'
   | 'QUEUED'
   | 'PUBLISHING'
   | 'PUBLISHED'
   | 'FAILED'
-  | 'PARTIAL';
+  | 'PARTIAL'
+  | 'FAILED_PERMANENT';
 
 export type PlatformPublishStatus =
   | 'IDLE'
@@ -16,7 +26,9 @@ export type PlatformPublishStatus =
   | 'STAGED'
   | 'PUBLISHING'
   | 'PUBLISHED'
-  | 'FAILED';
+  | 'FAILED'
+  | 'RETRY_PENDING'
+  | 'FAILED_PERMANENT';
 
 export interface UserProfile {
   uid: string;
@@ -48,6 +60,7 @@ export interface Brand {
 
 export interface SocialAccount {
   id: string;
+  organizationId?: string;
   brandId: string;
   platform: Platform;
   handle: string;
@@ -61,13 +74,16 @@ export interface SocialAccount {
 
 export interface ContentItem {
   id: string;
+  organizationId?: string;
   brandId: string;
   title: string;
   videoUrl: string;
+  mediaStorageKey?: string;
   thumbnailUrl?: string;
   caption: string;
   platforms: Platform[];
   scheduledAt?: string | null;
+  workflowStatus?: WorkflowStatus;
   status: GlobalPublishStatus;
   platformStatus: Record<Platform, PlatformPublishStatus>;
   platformPostUrls?: Partial<Record<Platform, string>>;
@@ -79,18 +95,22 @@ export interface ContentItem {
 
 export interface PublishingJob {
   id: string;
+  organizationId?: string;
   contentId: string;
   brandId: string;
   platform: Platform;
   accountHandle: string;
   status: PlatformPublishStatus;
+  scheduledAt?: string | null;
   workerId?: string;
   workerMachineName?: string;
   claimedAt?: string;
+  leaseExpiresAt?: string;
   publishedAt?: string;
   failedAt?: string;
   errorMessage?: string;
   retryCount: number;
+  maxRetries?: number;
   postUrl?: string;
   createdAt: string;
   updatedAt: string;
@@ -98,6 +118,7 @@ export interface PublishingJob {
 
 export interface PublishingEvent {
   id: string;
+  organizationId?: string;
   jobId: string;
   contentId: string;
   platform: Platform;
@@ -111,6 +132,7 @@ export interface PublishingEvent {
 
 export interface WorkerHeartbeat {
   workerId: string;
+  organizationId?: string;
   machineName: string;
   version: string;
   status: 'ONLINE' | 'BUSY' | 'OFFLINE';
@@ -118,4 +140,5 @@ export interface WorkerHeartbeat {
   installedPlatforms: Platform[];
   autoSocialPath: string;
   activeJobsCount: number;
+  accounts?: Array<{ platform: Platform; handle: string; connected: boolean }>;
 }

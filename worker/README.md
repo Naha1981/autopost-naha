@@ -1,27 +1,56 @@
-# NahaLabs Local Worker Setup on Operator Windows Laptop
+# NahaLabs Windows Worker
 
-This directory contains the lightweight worker daemon that runs directly beside your **AutoSocial** installation on your Windows machine.
+This worker runs on the private Windows operator laptop and connects the NahaLabs Social Command Center to the existing local AutoSocial installation.
 
-## Prerequisites
-1. **AutoSocial** installed (e.g. at `C:\NahaLabs\AutoSocial`).
-2. Node.js 18+ installed.
-3. Persistent browser profiles initialized in `.profiles/<account>/<platform>`.
+## Architecture
 
-## Running the Worker
-
-```powershell
-# Set environment variables
-$env:NAHALABS_CLOUD_URL = "https://your-nahalabs-cloud.run.app"
-$env:WORKER_TOKEN = "your_generated_worker_token"
-$env:AUTOSOCIAL_PATH = "C:\NahaLabs\AutoSocial"
-
-# Start the worker
-node nahalabs-worker.mjs start
+```
+NahaLabs UI
+  -> Firebase Auth / Firestore / Firebase Storage
+  -> HTTPS worker API
+  -> Windows NahaLabs Worker
+  -> http://127.0.0.1:3000 AutoSocial
+  -> Instagram / TikTok / YouTube
 ```
 
-## How AutoSocial Is Invoked
-1. The cloud app queues publishing jobs with video download tokens.
-2. This worker downloads the video file and writes it to `C:\NahaLabs\AutoSocial\queue\<account>\<platform>\pending\<jobId>.mp4`.
-3. It creates the accompanying `<jobId>.json` metadata file containing caption, tags, and schedule info.
-4. It calls AutoSocial's internal runner or lets AutoSocial's directory watcher pick it up.
-5. It streams live progress back to NahaLabs Cloud.
+The worker never uploads Playwright profiles, cookies, passwords, or browser sessions.
+
+## Setup
+
+1. Copy `worker/.env.example` to `worker/.env`.
+2. Set `NAHALABS_CLOUD_URL`.
+3. Set `WORKER_TOKEN` to the same value as the server `WORKER_API_SECRET`.
+4. Keep AutoSocial local at `C:\Users\Thabiso\AutoSocial` unless you deliberately use another path.
+5. Start AutoSocial locally.
+6. Verify the connection:
+
+```powershell
+node worker/nahalabs-worker.mjs test-connection
+```
+
+7. Log a social account into the existing AutoSocial profile:
+
+```powershell
+node worker/nahalabs-worker.mjs login --account @yourhandle --platform instagram
+```
+
+8. Start the worker:
+
+```powershell
+node worker/nahalabs-worker.mjs start
+```
+
+## Publishing safety
+
+The worker refuses to stage a NahaLabs job when the selected AutoSocial pending queue already contains another video. This prevents a NahaLabs job from triggering the wrong local queue item.
+
+The worker stops AutoSocial scheduling by default before executing a NahaLabs job. NahaLabs therefore remains the business calendar and AutoSocial remains the publishing engine.
+
+Set `AUTOSOCIAL_SCHEDULER_ENABLED=true` only when you deliberately want AutoSocial's own scheduler active.
+
+## Commands
+
+- `start` — continuously poll and execute cloud jobs.
+- `test-connection` — verify the cloud worker API and AutoSocial.
+- `login` — start a local AutoSocial login session for an account/platform.
+

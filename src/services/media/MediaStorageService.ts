@@ -1,3 +1,5 @@
+import { auth, deleteObject, getDownloadURL, ref, storage, uploadBytes } from '../firebase';
+
 export interface MediaUploadResult {
   url: string;
   storageKey: string;
@@ -10,28 +12,26 @@ export interface MediaUploadResult {
 export interface IMediaStorageProvider {
   name: string;
   uploadVideo(file: File): Promise<MediaUploadResult>;
-  getDownloadUrl(storageKey: string, expirationMinutes?: number): Promise<string>;
+  getDownloadUrl(storageKey: string): Promise<string>;
   deleteMedia(storageKey: string): Promise<boolean>;
 }
 
-/**
- * Browser-compatible Local & Object-URL Storage Provider.
- * Stores small sample media in browser IndexedDB/Cache/Object URLs or data blobs
- * without requiring expensive cloud buckets during development.
- */
-export class ClientMediaStorageProvider implements IMediaStorageProvider {
-  readonly name = 'NahaLabs Local Client Storage';
-  private mediaCache = new Map<string, { blob: Blob; fileName: string; mimeType: string }>();
+export class FirebaseMediaStorageProvider implements IMediaStorageProvider {
+  readonly name = 'Firebase Storage';
+
+  private requireUid() {
+    const uid = auth.currentUser?.uid;
+    if (!uid) throw new Error('Sign in with Google before uploading media.');
+    return uid;
+  }
 
   async uploadVideo(file: File): Promise<MediaUploadResult> {
-    const storageKey = `media_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-    this.mediaCache.set(storageKey, {
-      blob: file,
-      fileName: file.name,
-      mimeType: file.type || 'video/mp4',
-    });
-
-    const url = URL.createObjectURL(file);
+    const uid = this.requireUid();
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const storageKey = 'users/' + uid + '/media/' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + '_' + safeName;
+    const storageRef = ref(storage, storageKey);
+    const snapshot = await uploadBytes(storageRef, file, { contentType: file.type || 'video/mp4' });
+    const url = await getDownloadURL(snapshot.ref);
     return {
       url,
       storageKey,
@@ -43,15 +43,18 @@ export class ClientMediaStorageProvider implements IMediaStorageProvider {
   }
 
   async getDownloadUrl(storageKey: string): Promise<string> {
-    const cached = this.mediaCache.get(storageKey);
-    if (cached) {
-      return URL.createObjectURL(cached.blob);
-    }
-    return '';
+    this.requireUid();
+    return getDownloadURL(ref(storage, storageKey));
   }
 
   async deleteMedia(storageKey: string): Promise<boolean> {
-    return this.mediaCache.delete(storageKey);
+    this.requireUid();
+    try {
+      await deleteObject(ref(storage, storageKey));
+      return true;
+    } catch {
+      return false;
+    }
   }
 }
 
@@ -60,27 +63,18 @@ export class MediaStorageService {
   private provider: IMediaStorageProvider;
 
   private constructor() {
-    this.provider = new ClientMediaStorageProvider();
+    this.provider = new FirebaseMediaStorageProvider();
   }
 
   static getInstance(): MediaStorageService {
-    if (!MediaStorageService.instance) {
-      MediaStorageService.instance = new MediaStorageService();
-    }
+    if (!MediaStorageService.instance) MediaStorageService.instance = new MediaStorageService();
     return MediaStorageService.instance;
   }
 
-  setProvider(provider: IMediaStorageProvider) {
-    this.provider = provider;
-  }
-
-  async upload(file: File): Promise<MediaUploadResult> {
-    return await this.provider.uploadVideo(file);
-  }
-
-  async getDownloadUrl(storageKey: string): Promise<string> {
-    return await this.provider.getDownloadUrl(storageKey);
-  }
+  setProvider(provider: IMediaStorageProvider) { this.provider = provider; }
+  async upload(file: File) { return this.provider.uploadVideo(file); }
+  async getDownloadUrl(storageKey: string) { return this.provider.getDownloadUrl(storageKey); }
+  async deleteMedia(storageKey: string) { return this.provider.deleteMedia(storageKey); }
 }
 
 export const mediaStorageService = MediaStorageService.getInstance();

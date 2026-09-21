@@ -19,7 +19,8 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenCreateModal }) => {
   const {
     user,
     signOut,
-    loginAsDemoOperator,
+    signInGoogle,
+    authLoading,
     brands,
     selectedBrandId,
     setSelectedBrandId,
@@ -123,6 +124,16 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenCreateModal }) => {
               </div>
               <div className="text-[10px] text-amber-400 font-mono">Lead Operator</div>
             </div>
+            {user.uid === 'usr_thabiso_naha' && (
+              <button
+                onClick={signInGoogle}
+                disabled={authLoading}
+                title="Sign in with Google to enable cloud storage and worker publishing"
+                className="px-2.5 py-1.5 rounded-lg bg-white/10 border border-slate-600 text-[10px] font-bold text-amber-300 hover:bg-white/15 disabled:opacity-50 cursor-pointer"
+              >
+                {authLoading ? 'Signing in…' : 'Cloud Sign-In'}
+              </button>
+            )}
             <button
               onClick={signOut}
               title="Sign Out"
@@ -133,10 +144,11 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenCreateModal }) => {
           </div>
         ) : (
           <button
-            onClick={loginAsDemoOperator}
-            className="px-3 py-1.5 text-xs font-bold rounded-lg bg-slate-800 border border-slate-600 text-slate-200 hover:bg-slate-700 cursor-pointer"
+            onClick={signInGoogle}
+            disabled={authLoading}
+            className="px-3 py-1.5 text-xs font-bold rounded-lg bg-slate-800 border border-slate-600 text-slate-200 hover:bg-slate-700 disabled:opacity-50 cursor-pointer"
           >
-            Operator Sign In
+            {authLoading ? 'Signing in…' : 'Sign in with Google'}
           </button>
         )}
       </div>
