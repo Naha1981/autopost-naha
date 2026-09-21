@@ -17,6 +17,8 @@ import path from 'path';
 import https from 'https';
 import http from 'http';
 
+const knownAccountHandles = new Map();
+
 const CONFIG = {
   cloudUrl: process.env.NAHALABS_CLOUD_URL || 'http://localhost:3000',
   workerToken: process.env.WORKER_TOKEN || 'nh_worker_local_key',
