@@ -1,94 +1,16 @@
-# AutoSocial Integration Reference & Protocol
+# AutoSocial Integration
 
-## 1. AutoSocial Overview
+AutoSocial is treated as a local execution engine. NahaLabs does not call AutoSocial from the browser and does not reimplement its uploaders.
 
-Reference Repository: [Katzca/AutoSocial](https://github.com/Katzca/AutoSocial)
+For a claimed job the worker:
 
-AutoSocial is a self-hosted desktop automation suite using Playwright and Node.js designed to upload short-form video content to Instagram, TikTok, and YouTube via persistent Chromium browser contexts.
+1. Resolves the AutoSocial account locally.
+2. Stops that platform scheduler temporarily so the wrong queued item cannot win the race.
+3. Moves pre-existing pending items into a temporary local hold folder.
+4. Downloads the cloud media into the exact AutoSocial account/platform pending queue.
+5. Writes the caption beside the video using AutoSocial's existing `.description` convention.
+6. Calls the existing platform `run-once` endpoint.
+7. Verifies the returned queue item belongs to the NahaLabs job.
+8. Restores previously held queue items and restarts the scheduler if it was running.
 
-### Key AutoSocial Architectural Components
-
-1. **Queue Directory Hierarchy**:
-   ```
-   AutoSocial/
-   ├── queue/
-   │   └── <account_id_or_slug>/
-   │       ├── instagram/
-   │       │   ├── pending/   <-- video files with companion .txt/.json metadata
-   │       │   ├── posted/    <-- archived after successful upload
-   │       │   └── failed/    <-- stored on upload error
-   │       ├── tiktok/
-   │       │   └── ...
-   │       └── youtube/
-   │           └── ...
-   ```
-
-2. **Persistent Browser Session Profiles**:
-   ```
-   AutoSocial/
-   └── .profiles/
-       └── <account_id_or_slug>/
-           ├── instagram/     <-- Chromium user data directory (cookies, localStorage)
-           ├── tiktok/
-           └── youtube/
-   ```
-
-3. **FFmpeg & Media Normalization**:
-   - Aspect Ratio: 9:16 (1080x1920) recommended.
-   - Codec: H.264 / AAC audio.
-   - AutoSocial provides optional video watermarking, scaling, and duration trimming before browser ingestion.
-
----
-
-## 2. NahaLabs Integration Rulebook
-
-### Strict Isolation Rules
-1. **No Password Ingestion**: The cloud NahaLabs app never requests, stores, or transmits passwords for Instagram, TikTok, or YouTube.
-2. **Local Session Seeding**: Account login occurs solely inside the operator's local Playwright browser during initial connection via the command:
-   `node worker.mjs login --account <account_id> --platform <platform>`
-3. **No Cloud Exposure of `.profiles`**: The `.profiles/` directory remains strictly in local Windows NTFS storage. It is excluded from version control and cloud synchronizations.
-4. **Queue Staging Protocol**: The NahaLabs Local Worker writes directly into `queue/<account>/<platform>/pending/` with standardized companion metadata:
-   - Video file: `<job_id>.mp4`
-   - Companion JSON: `<job_id>.json` containing title, caption, hashtags, and schedule constraints.
-
----
-
-## 3. Worker Execution Flow
-
-```
-+---------------------------+
-| Cloud Job State: "QUEUED" |
-+---------------------------+
-              |
-              v (Worker polls via GET /api/worker/jobs/poll)
-+---------------------------+
-| Worker Claims Job         |
-| Cloud State -> "CLAIMED"  |
-+---------------------------+
-              |
-              v (Worker fetches video bytes via authenticated signed stream)
-+---------------------------+
-| Stage Media to Local Disk |
-| Path: queue/<acc>/<plat>/ |
-| Cloud State -> "STAGED"   |
-+---------------------------+
-              |
-              v (Worker invokes AutoSocial execution adapter)
-+---------------------------+
-| AutoSocial Automation Run |
-| Launch Playwright Context |
-| Cloud State: "PUBLISHING" |
-+---------------------------+
-              |
-      +-------+-------+
-      |               |
-   (Success)       (Error)
-      |               |
-      v               v
-+-------------+ +---------------------------+
-| Move to     | | Move to queue/.../failed  |
-| posted/     | | Cloud State -> "FAILED"   |
-| Cloud State | | Error message & telemetry |
-| "PUBLISHED" | +---------------------------+
-+-------------+
-```
+The existing AutoSocial Playwright profiles remain local.
