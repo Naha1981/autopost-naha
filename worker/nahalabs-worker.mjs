@@ -51,8 +51,10 @@ const LOGIN_ENDPOINTS = {
 function requireToken() {
   if (!CONFIG.cloudUrl) throw new Error('NAHALABS_CLOUD_URL is required in worker/.env.');
   if (!CONFIG.workerToken) throw new Error('WORKER_TOKEN is required in worker/.env.');
-  const local = /^https?:\\/\\/(127\\.0\\.0\\.1|localhost)(:\\d+)?$/i.test(CONFIG.cloudUrl);
-  if (!local && !/^https:\\/\\//i.test(CONFIG.cloudUrl)) {
+
+  const parsed = new URL(CONFIG.cloudUrl);
+  const localHost = parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost';
+  if (!localHost && parsed.protocol !== 'https:') {
     throw new Error('NAHALABS_CLOUD_URL must use HTTPS unless it points to localhost.');
   }
 }
