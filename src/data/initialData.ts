@@ -1,0 +1,188 @@
+import { Brand, ContentItem, Platform, PublishingJob, SocialAccount } from '../types';
+
+export const INITIAL_BRANDS: Brand[] = [
+  {
+    id: 'brand_naha_studios',
+    organizationId: 'org_nahalabs_hq',
+    name: 'Naha Studios',
+    code: 'NAHA',
+    description: 'Digital media & visual storytelling hub based in Rosebank, Johannesburg.',
+    color: '#E65100', // Warm amber-orange
+    createdAt: '2026-08-15T08:00:00Z',
+    accountsCount: 3,
+  },
+  {
+    id: 'brand_acme_africa',
+    organizationId: 'org_nahalabs_hq',
+    name: 'Acme Africa Logistics',
+    code: 'ACME',
+    description: 'Cross-border commerce & supply chain logistics network in Southern Africa.',
+    color: '#0D47A1', // Deep corporate navy
+    createdAt: '2026-08-18T10:00:00Z',
+    accountsCount: 2,
+  },
+  {
+    id: 'brand_naha_sound',
+    organizationId: 'org_nahalabs_hq',
+    name: 'Naha Sound Lab',
+    code: 'SOUND',
+    description: 'Afrobeats, Amapiano, and electronic audio production collective.',
+    color: '#C59B27', // Rich gold
+    createdAt: '2026-08-20T12:00:00Z',
+    accountsCount: 2,
+  },
+];
+
+export const INITIAL_ACCOUNTS: SocialAccount[] = [
+  {
+    id: 'acc_naha_ig',
+    brandId: 'brand_naha_studios',
+    platform: 'instagram',
+    handle: '@nahastudios.za',
+    accountName: 'Naha Studios Official',
+    connectionStatus: 'CONNECTED',
+    localWorkerId: 'worker-win11-jhb01',
+    lastActivityAt: '2026-09-19T14:30:00Z',
+    autoSocialQueuePath: 'queue/nahastudios_za/instagram',
+  },
+  {
+    id: 'acc_naha_tt',
+    brandId: 'brand_naha_studios',
+    platform: 'tiktok',
+    handle: '@nahastudios',
+    accountName: 'Naha Studios TikTok',
+    connectionStatus: 'CONNECTED',
+    localWorkerId: 'worker-win11-jhb01',
+    lastActivityAt: '2026-09-19T15:10:00Z',
+    autoSocialQueuePath: 'queue/nahastudios/tiktok',
+  },
+  {
+    id: 'acc_naha_yt',
+    brandId: 'brand_naha_studios',
+    platform: 'youtube',
+    handle: '@NahaStudiosZA',
+    accountName: 'Naha Studios YouTube',
+    connectionStatus: 'CONNECTED',
+    localWorkerId: 'worker-win11-jhb01',
+    lastActivityAt: '2026-09-18T11:00:00Z',
+    autoSocialQueuePath: 'queue/NahaStudiosZA/youtube',
+  },
+  {
+    id: 'acc_acme_ig',
+    brandId: 'brand_acme_africa',
+    platform: 'instagram',
+    handle: '@acme_africa_hq',
+    accountName: 'Acme Africa Logistics',
+    connectionStatus: 'CONNECTED',
+    localWorkerId: 'worker-win11-jhb01',
+    lastActivityAt: '2026-09-17T09:00:00Z',
+    autoSocialQueuePath: 'queue/acme_africa_hq/instagram',
+  },
+  {
+    id: 'acc_acme_yt',
+    brandId: 'brand_acme_africa',
+    platform: 'youtube',
+    handle: '@AcmeAfricaLogistics',
+    accountName: 'Acme Africa Freight',
+    connectionStatus: 'PENDING_LOCAL_SETUP',
+    localWorkerId: 'worker-win11-jhb01',
+    lastActivityAt: '2026-09-15T10:00:00Z',
+    autoSocialQueuePath: 'queue/AcmeAfricaLogistics/youtube',
+  },
+  {
+    id: 'acc_sound_tt',
+    brandId: 'brand_naha_sound',
+    platform: 'tiktok',
+    handle: '@nahasoundlab',
+    accountName: 'Naha Sound Lab',
+    connectionStatus: 'CONNECTED',
+    localWorkerId: 'worker-win11-jhb01',
+    lastActivityAt: '2026-09-19T20:00:00Z',
+    autoSocialQueuePath: 'queue/nahasoundlab/tiktok',
+  },
+];
+
+export const SAMPLE_VIDEOS = [
+  {
+    title: 'Urban Rhythm - Johannesburg City Tour',
+    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+    thumbnail: 'https://images.unsplash.com/photo-1577717903315-1691ae25ab3f?w=600&auto=format&fit=crop&q=80',
+  },
+  {
+    title: 'Studio Session 14 - Amapiano Bassline Breakdown',
+    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
+    thumbnail: 'https://images.unsplash.com/photo-1598488035139-bdbb2231ce04?w=600&auto=format&fit=crop&q=80',
+  },
+  {
+    title: 'Acme Fleet Route 04: Durban to Gauteng Express',
+    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
+    thumbnail: 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=600&auto=format&fit=crop&q=80',
+  },
+];
+
+export const INITIAL_CONTENT: ContentItem[] = [
+  {
+    id: 'cnt_001',
+    brandId: 'brand_naha_studios',
+    title: 'Behind the Scenes: Rosebank Creative Sprint',
+    videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+    thumbnailUrl: 'https://images.unsplash.com/photo-1577717903315-1691ae25ab3f?w=600&auto=format&fit=crop&q=80',
+    caption: 'How we brainstormed, shot, and color-graded our latest campaign in under 48 hours. 🎬🇿🇦 #NahaStudios #JoburgCreatives #AfricanDesign',
+    platforms: ['instagram', 'tiktok', 'youtube'],
+    scheduledAt: null,
+    status: 'PARTIAL',
+    platformStatus: {
+      instagram: 'PUBLISHED',
+      tiktok: 'FAILED',
+      youtube: 'PUBLISHED',
+    },
+    platformPostUrls: {
+      instagram: 'https://instagram.com/reel/C_za982k1',
+      youtube: 'https://youtube.com/shorts/naha_bts_01',
+    },
+    platformErrors: {
+      tiktok: 'Playwright automation timed out during TikTok captcha challenge. Retry available.',
+    },
+    createdAt: '2026-09-19T08:00:00Z',
+    updatedAt: '2026-09-19T08:14:00Z',
+    source: 'manual',
+  },
+  {
+    id: 'cnt_002',
+    brandId: 'brand_naha_sound',
+    title: 'Log Drum Sound Design Masterclass',
+    videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
+    thumbnailUrl: 'https://images.unsplash.com/photo-1598488035139-bdbb2231ce04?w=600&auto=format&fit=crop&q=80',
+    caption: 'Unpacking the signature low-end frequency shaping of modern Amapiano tracks in FL Studio 24. 🎹🔥 #MusicProduction #Amapiano #AudioEngineering',
+    platforms: ['tiktok', 'youtube'],
+    scheduledAt: '2026-09-22T15:00:00Z',
+    status: 'SCHEDULED',
+    platformStatus: {
+      instagram: 'IDLE',
+      tiktok: 'IDLE',
+      youtube: 'IDLE',
+    },
+    createdAt: '2026-09-19T11:00:00Z',
+    updatedAt: '2026-09-19T11:00:00Z',
+    source: 'csv',
+  },
+  {
+    id: 'cnt_003',
+    brandId: 'brand_acme_africa',
+    title: 'Cross-Border Cold Chain Innovation',
+    videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
+    thumbnailUrl: 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=600&auto=format&fit=crop&q=80',
+    caption: 'Maintaining sub-zero pharmaceutical temperatures across 1,800km transit corridors. #SupplyChain #Logistics #AfricaTrade',
+    platforms: ['instagram'],
+    scheduledAt: '2026-09-21T09:30:00Z',
+    status: 'SCHEDULED',
+    platformStatus: {
+      instagram: 'IDLE',
+      tiktok: 'IDLE',
+      youtube: 'IDLE',
+    },
+    createdAt: '2026-09-18T14:00:00Z',
+    updatedAt: '2026-09-18T14:00:00Z',
+    source: 'manual',
+  },
+];

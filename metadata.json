@@ -1,0 +1,7 @@
+{
+  "name": "NahaLabs Social Command Center",
+  "description": "Social publishing control center for NahaLabs and its clients with cloud queue management, scheduling, and local worker integration.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
