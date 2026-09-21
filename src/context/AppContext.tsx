@@ -569,12 +569,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     await persistJob(finalJob);
 
-    const nextPlatformStatus = { ...item.platformStatus, [job.platform]: finalStatus };
+    let latestItem = item;
+    if (cloudSession()) {
+      const latestSnapshot = await getDoc(doc(db, 'content', item.id));
+      if (latestSnapshot.exists()) latestItem = normalizeContent(latestSnapshot.data() as ContentItem);
+    } else {
+      const localLatest = contentList.find((candidate) => candidate.id === item.id);
+      if (localLatest) latestItem = localLatest;
+    }
+
+    const nextPlatformStatus = { ...latestItem.platformStatus, [job.platform]: finalStatus };
     const nextContent = {
       platformStatus: nextPlatformStatus,
-      status: replaceContentStatus(nextPlatformStatus, item.platforms),
-      platformPostUrls: { ...(item.platformPostUrls || {}), ...(result.postUrl ? { [job.platform]: result.postUrl } : {}) },
-      platformErrors: { ...(item.platformErrors || {}), ...(result.errorMessage ? { [job.platform]: result.errorMessage } : {}) },
+      status: replaceContentStatus(nextPlatformStatus, latestItem.platforms),
+      platformPostUrls: { ...(latestItem.platformPostUrls || {}), ...(result.postUrl ? { [job.platform]: result.postUrl } : {}) },
+      platformErrors: { ...(latestItem.platformErrors || {}), ...(result.errorMessage ? { [job.platform]: result.errorMessage } : {}) },
     };
     if (cloudSession()) await updateFirestoreContent(item.id, nextContent);
     else setContentList((prev) => prev.map((candidate) => candidate.id === item.id ? { ...candidate, ...nextContent, updatedAt: new Date().toISOString() } : candidate));
