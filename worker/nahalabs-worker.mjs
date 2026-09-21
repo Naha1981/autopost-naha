@@ -7,6 +7,7 @@
  * to the existing local AutoSocial installation.
  */
 
+import 'dotenv/config';
 import fs from 'node:fs';
 import fsPromises from 'node:fs/promises';
 import path from 'node:path';
@@ -17,7 +18,7 @@ import { Readable } from 'node:stream';
 const knownAccountHandles = new Map();
 
 const CONFIG = {
-  cloudUrl: process.env.NAHALABS_CLOUD_URL || 'http://127.0.0.1:8080',
+  cloudUrl: process.env.NAHALABS_CLOUD_URL || '',
   workerToken: process.env.WORKER_TOKEN || '',
   organizationId: process.env.WORKER_ORGANIZATION_ID || 'org_nahalabs_hq',
   workerId: process.env.WORKER_ID || 'worker-' + os.hostname(),
@@ -48,7 +49,12 @@ const LOGIN_ENDPOINTS = {
 };
 
 function requireToken() {
+  if (!CONFIG.cloudUrl) throw new Error('NAHALABS_CLOUD_URL is required in worker/.env.');
   if (!CONFIG.workerToken) throw new Error('WORKER_TOKEN is required in worker/.env.');
+  const local = /^https?:\\/\\/(127\\.0\\.0\\.1|localhost)(:\\d+)?$/i.test(CONFIG.cloudUrl);
+  if (!local && !/^https:\\/\\//i.test(CONFIG.cloudUrl)) {
+    throw new Error('NAHALABS_CLOUD_URL must use HTTPS unless it points to localhost.');
+  }
 }
 
 async function requestJson(baseUrl, route, options) {
@@ -247,7 +253,7 @@ async function stage(job) {
     level: 'info',
   });
 
-  await downloadMedia(job.videoUrl, spoolFile);
+  await downloadMedia(job.mediaDownloadUrl || job.videoUrl, spoolFile);
   await fsPromises.rename(spoolFile, targetFile);
   await fsPromises.writeFile(captionFile, String(job.caption || ''), 'utf8');
   await fsPromises.writeFile(metadataFile, JSON.stringify({
