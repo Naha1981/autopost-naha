@@ -136,9 +136,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onSelectTab }) => 
             <Laptop className="w-3.5 h-3.5 text-amber-400" />
             Local Worker
           </span>
-          <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-800">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-            ACTIVE
+          <span className="flex items-center gap-1 text-[10px] font-bold text-slate-300 bg-slate-800 px-2 py-0.5 rounded-full border border-slate-700">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+            CLOUD QUEUE
           </span>
         </div>
 
@@ -149,11 +149,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onSelectTab }) => 
           </div>
           <div className="flex justify-between">
             <span>Machine:</span>
-            <span className="font-mono text-slate-300 truncate max-w-[100px]">WIN11-NAHA</span>
+            <span className="font-mono text-slate-300 truncate max-w-[100px]">Windows Worker</span>
           </div>
           <div className="flex justify-between">
             <span>AutoSocial:</span>
-            <span className="font-mono text-amber-400 truncate max-w-[100px]">queue/pending</span>
+            <span className="font-mono text-amber-400 truncate max-w-[100px]">127.0.0.1:3000</span>
           </div>
         </div>
 
