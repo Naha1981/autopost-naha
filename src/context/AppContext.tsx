@@ -8,12 +8,18 @@ import {
   auth,
   collection,
   db,
+  deleteDoc,
   doc,
+  getDoc,
+  getDocs,
   googleProvider,
   onAuthStateChanged,
   onSnapshot,
+  query,
   setDoc,
   signInWithPopup,
+  where,
+  writeBatch,
   fbSignOut,
 } from '../services/firebase';
 import { publisherService } from '../services/publisher/PublisherService';
@@ -55,12 +61,16 @@ interface AppContextType {
       caption: string;
       platforms: Platform[];
       scheduledAt?: string | null;
+      mediaStorageKey?: string;
     },
     postNow?: boolean
   ) => Promise<ContentItem>;
   updateContent: (id: string, updates: Partial<ContentItem>) => Promise<void>;
   deleteContent: (id: string) => Promise<void>;
   scheduleContent: (id: string, scheduledDate: string) => Promise<void>;
+  reviewContent: (id: string) => Promise<void>;
+  approveContent: (id: string) => Promise<void>;
+  requestContentChanges: (id: string) => Promise<void>;
   publishNow: (contentId: string, specificPlatforms?: Platform[]) => Promise<void>;
   retryPublish: (contentId: string, platform?: Platform) => Promise<void>;
   
@@ -91,6 +101,92 @@ const LOCAL_STORAGE_KEY_BRANDS = 'nahalabs_brands_v1';
 const LOCAL_STORAGE_KEY_ACCOUNTS = 'nahalabs_accounts_v1';
 const LOCAL_STORAGE_KEY_JOBS = 'nahalabs_jobs_v1';
 const LOCAL_STORAGE_KEY_EVENTS = 'nahalabs_events_v1';
+
+
+const DEFAULT_ORGANIZATION_ID = 'org_nahalabs_hq';
+
+function replaceContentStatus(
+  platformStatus: Record<Platform, PlatformPublishStatus>,
+  activePlatforms: Platform[]
+): GlobalPublishStatus {
+  const statuses = activePlatforms.map((platform) => platformStatus[platform]);
+  if (!statuses.length) return 'DRAFT';
+  if (statuses.every((status) => status === 'PUBLISHED')) return 'PUBLISHED';
+  if (statuses.every((status) => status === 'FAILED_PERMANENT')) return 'FAILED_PERMANENT';
+  if (statuses.every((status) => status === 'FAILED')) return 'FAILED';
+  if (statuses.some((status) => ['PUBLISHING', 'STAGED', 'CLAIMED'].includes(status))) return 'PUBLISHING';
+  if (statuses.some((status) => ['QUEUED', 'RETRY_PENDING'].includes(status))) return 'QUEUED';
+  if (statuses.some((status) => status === 'PUBLISHED')) return 'PARTIAL';
+  return 'DRAFT';
+}
+
+function normalizeContent(item: ContentItem): ContentItem {
+  return {
+    ...item,
+    organizationId: item.organizationId || DEFAULT_ORGANIZATION_ID,
+    workflowStatus:
+      item.workflowStatus ||
+      (['SCHEDULED', 'QUEUED', 'PUBLISHING', 'PUBLISHED'].includes(item.status) ? 'APPROVED' : 'DRAFT'),
+    platformStatus: {
+      instagram: item.platformStatus?.instagram || 'IDLE',
+      tiktok: item.platformStatus?.tiktok || 'IDLE',
+      youtube: item.platformStatus?.youtube || 'IDLE',
+    },
+    platformPostUrls: item.platformPostUrls || {},
+    platformErrors: item.platformErrors || {},
+  };
+}
+
+async function migrateLocalWorkspace(orgId: string) {
+  const [brands, accounts, content, jobs, events] = await Promise.all([
+    getDocs(query(collection(db, 'brands'), where('organizationId', '==', orgId))),
+    getDocs(query(collection(db, 'social_accounts'), where('organizationId', '==', orgId))),
+    getDocs(query(collection(db, 'content'), where('organizationId', '==', orgId))),
+    getDocs(query(collection(db, 'publishing_jobs'), where('organizationId', '==', orgId))),
+    getDocs(query(collection(db, 'publishing_events'), where('organizationId', '==', orgId))),
+  ]);
+
+  const localBrands = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY_BRANDS) || 'null') || INITIAL_BRANDS;
+  const localAccounts = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY_ACCOUNTS) || 'null') || INITIAL_ACCOUNTS;
+  const localContent = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY_CONTENT) || 'null') || INITIAL_CONTENT;
+  const localJobs = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY_JOBS) || '[]');
+  const localEvents = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY_EVENTS) || '[]');
+  const batch = writeBatch(db);
+  let writes = 0;
+
+  if (brands.empty) for (const item of localBrands) {
+    batch.set(doc(db, 'brands', item.id), { ...item, organizationId: orgId }, { merge: true });
+    writes += 1;
+  }
+  if (accounts.empty) for (const item of localAccounts) {
+    batch.set(doc(db, 'social_accounts', item.id), { ...item, organizationId: orgId }, { merge: true });
+    writes += 1;
+  }
+  if (content.empty) for (const item of localContent) {
+    const normalized = normalizeContent({ ...item, organizationId: orgId });
+    if (normalized.videoUrl.startsWith('blob:')) continue;
+    batch.set(doc(db, 'content', normalized.id), normalized, { merge: true });
+    writes += 1;
+  }
+  if (jobs.empty) for (const item of localJobs) {
+    batch.set(doc(db, 'publishing_jobs', item.id), { ...item, organizationId: orgId, maxRetries: item.maxRetries || 3 }, { merge: true });
+    writes += 1;
+  }
+  if (events.empty) for (const item of localEvents.slice(0, 400)) {
+    batch.set(doc(db, 'publishing_events', item.id), { ...item, organizationId: orgId }, { merge: true });
+    writes += 1;
+  }
+  if (writes) await batch.commit();
+}
+
+async function updateFirestoreContent(contentId: string, updates: Partial<ContentItem>) {
+  await setDoc(doc(db, 'content', contentId), { ...updates, updatedAt: new Date().toISOString() }, { merge: true });
+}
+
+async function updateFirestoreJob(job: PublishingJob) {
+  await setDoc(doc(db, 'publishing_jobs', job.id), job, { merge: true });
+}
+
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Auth state
@@ -141,43 +237,101 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     youtube: false,
   });
 
-  // Sync to localStorage
+  // Local storage is a demo/offline fallback only. Authenticated workspaces use Firestore.
   useEffect(() => {
+    if (auth.currentUser) return;
     localStorage.setItem(LOCAL_STORAGE_KEY_CONTENT, JSON.stringify(contentList));
   }, [contentList]);
 
   useEffect(() => {
+    if (auth.currentUser) return;
     localStorage.setItem(LOCAL_STORAGE_KEY_BRANDS, JSON.stringify(brands));
   }, [brands]);
 
   useEffect(() => {
+    if (auth.currentUser) return;
     localStorage.setItem(LOCAL_STORAGE_KEY_ACCOUNTS, JSON.stringify(accounts));
   }, [accounts]);
 
   useEffect(() => {
+    if (auth.currentUser) return;
     localStorage.setItem(LOCAL_STORAGE_KEY_JOBS, JSON.stringify(jobs));
   }, [jobs]);
 
   useEffect(() => {
+    if (auth.currentUser) return;
     localStorage.setItem(LOCAL_STORAGE_KEY_EVENTS, JSON.stringify(events));
   }, [events]);
 
-  // Firebase Auth listener
+  // Firebase Auth is the real cloud identity. The demo operator remains a local fallback.
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (fbUser) => {
-      if (fbUser) {
-        setUser({
+    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
+      if (!fbUser) {
+        setAuthLoading(false);
+        return;
+      }
+
+      try {
+        const userRef = doc(db, 'users', fbUser.uid);
+        const existing = await getDoc(userRef);
+        const current = existing.exists() ? (existing.data() as UserProfile) : null;
+        const profile: UserProfile = {
           uid: fbUser.uid,
-          email: fbUser.email || 'naha.thabiso@gmail.com',
-          displayName: fbUser.displayName || 'Thabiso Naha',
-          role: 'admin',
-          organizationId: 'org_nahalabs_hq',
-          avatarUrl: fbUser.photoURL || undefined,
-        });
+          email: fbUser.email || current?.email || '',
+          displayName: fbUser.displayName || current?.displayName || 'NahaLabs Operator',
+          role: current?.role || 'admin',
+          organizationId: current?.organizationId || DEFAULT_ORGANIZATION_ID,
+          avatarUrl: fbUser.photoURL || current?.avatarUrl || undefined,
+        };
+        await setDoc(userRef, profile, { merge: true });
+        await migrateLocalWorkspace(profile.organizationId);
+        setUser(profile);
+      } catch (error) {
+        console.error('Unable to initialize cloud workspace', error);
+      } finally {
+        setAuthLoading(false);
       }
     });
+
     return () => unsubscribe();
   }, []);
+
+  const cloudSession = () => Boolean(auth.currentUser && user && user.uid !== 'usr_thabiso_naha');
+
+  // Firestore is authoritative for authenticated workspaces.
+  useEffect(() => {
+    if (!cloudSession() || !user) return;
+
+    const orgId = user.organizationId;
+    const unsubscribers = [
+      onSnapshot(query(collection(db, 'brands'), where('organizationId', '==', orgId)), (snapshot) => {
+        setBrands(snapshot.docs.map((item) => item.data() as Brand));
+      }),
+      onSnapshot(query(collection(db, 'social_accounts'), where('organizationId', '==', orgId)), (snapshot) => {
+        setAccounts(snapshot.docs.map((item) => item.data() as SocialAccount));
+      }),
+      onSnapshot(query(collection(db, 'content'), where('organizationId', '==', orgId)), (snapshot) => {
+        setContentList(snapshot.docs.map((item) => normalizeContent(item.data() as ContentItem)));
+      }),
+      onSnapshot(query(collection(db, 'publishing_jobs'), where('organizationId', '==', orgId)), (snapshot) => {
+        setJobs(
+          snapshot.docs
+            .map((item) => item.data() as PublishingJob)
+            .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)))
+        );
+      }),
+      onSnapshot(query(collection(db, 'publishing_events'), where('organizationId', '==', orgId)), (snapshot) => {
+        setEvents(
+          snapshot.docs
+            .map((item) => item.data() as PublishingEvent)
+            .sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp)))
+            .slice(0, 500)
+        );
+      }),
+    ];
+
+    return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
+  }, [user?.uid, user?.organizationId]);
 
   const signInGoogle = async () => {
     setAuthLoading(true);
@@ -231,8 +385,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const createBrand = async (data: { name: string; code: string; description?: string; color: string }): Promise<Brand> => {
     const newBrand: Brand = {
-      id: `brand_${data.code.toLowerCase()}_${Date.now().toString(36)}`,
-      organizationId: user?.organizationId || 'org_nahalabs_hq',
+      id: 'brand_' + data.code.toLowerCase() + '_' + Date.now().toString(36),
+      organizationId: user?.organizationId || DEFAULT_ORGANIZATION_ID,
       name: data.name,
       code: data.code.toUpperCase(),
       description: data.description,
@@ -241,35 +395,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       accountsCount: 0,
     };
 
-    setBrands((prev) => [newBrand, ...prev]);
-
-    // Background Firestore attempt
-    try {
+    if (cloudSession()) {
       await setDoc(doc(db, 'brands', newBrand.id), newBrand);
-    } catch (e) {
-      console.info('Firestore offline/fallback mode active for brands');
+    } else {
+      setBrands((prev) => [newBrand, ...prev]);
     }
-
     return newBrand;
   };
 
   const addSocialAccount = async (accData: Omit<SocialAccount, 'id'>): Promise<SocialAccount> => {
     const newAccount: SocialAccount = {
       ...accData,
-      id: `acc_${accData.platform}_${Date.now().toString(36)}`,
+      organizationId: user?.organizationId || DEFAULT_ORGANIZATION_ID,
+      id: 'acc_' + accData.platform + '_' + Date.now().toString(36),
       lastActivityAt: new Date().toISOString(),
     };
 
-    setAccounts((prev) => [newAccount, ...prev]);
-
-    // Update brand count
-    setBrands((prev) =>
-      prev.map((b) => (b.id === accData.brandId ? { ...b, accountsCount: (b.accountsCount || 0) + 1 } : b))
-    );
-
-    try {
+    if (cloudSession()) {
       await setDoc(doc(db, 'social_accounts', newAccount.id), newAccount);
-    } catch (e) {}
+      const brand = brands.find((item) => item.id === newAccount.brandId);
+      if (brand) {
+        await setDoc(doc(db, 'brands', brand.id), { accountsCount: (brand.accountsCount || 0) + 1 }, { merge: true });
+      }
+    } else {
+      setAccounts((prev) => [newAccount, ...prev]);
+      setBrands((prev) =>
+        prev.map((brand) => brand.id === accData.brandId ? { ...brand, accountsCount: (brand.accountsCount || 0) + 1 } : brand)
+      );
+    }
 
     return newAccount;
   };
@@ -282,6 +435,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       caption: string;
       platforms: Platform[];
       scheduledAt?: string | null;
+      mediaStorageKey?: string;
     },
     postNow: boolean = false
   ): Promise<ContentItem> => {
@@ -291,21 +445,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       youtube: itemData.platforms.includes('youtube') ? (postNow ? 'QUEUED' : 'IDLE') : 'IDLE',
     };
 
-    const globalStatus: GlobalPublishStatus = postNow
-      ? 'QUEUED'
-      : itemData.scheduledAt
-      ? 'SCHEDULED'
-      : 'DRAFT';
-
     const newItem: ContentItem = {
-      id: `cnt_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 6)}`,
+      id: 'cnt_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7),
+      organizationId: user?.organizationId || DEFAULT_ORGANIZATION_ID,
       brandId: itemData.brandId,
       title: itemData.title,
       videoUrl: itemData.videoUrl,
+      mediaStorageKey: itemData.mediaStorageKey,
       caption: itemData.caption,
       platforms: itemData.platforms,
       scheduledAt: itemData.scheduledAt || null,
-      status: globalStatus,
+      workflowStatus: postNow || itemData.scheduledAt ? 'APPROVED' : 'DRAFT',
+      status: postNow ? 'QUEUED' : itemData.scheduledAt ? 'SCHEDULED' : 'DRAFT',
       platformStatus: initialPlatformStatus,
       platformPostUrls: {},
       platformErrors: {},
@@ -314,195 +465,170 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       source: 'manual',
     };
 
-    setContentList((prev) => [newItem, ...prev]);
-
-    try {
+    if (cloudSession()) {
       await setDoc(doc(db, 'content', newItem.id), newItem);
-    } catch (e) {}
+    } else {
+      setContentList((prev) => [newItem, ...prev]);
+    }
 
     if (postNow) {
-      // Trigger execution pipeline immediately
-      setTimeout(() => {
-        publishNow(newItem.id, itemData.platforms);
-      }, 50);
+      await publishNow(newItem.id, itemData.platforms, newItem);
     }
 
     return newItem;
   };
 
   const updateContent = async (id: string, updates: Partial<ContentItem>) => {
+    if (cloudSession()) {
+      await updateFirestoreContent(id, updates);
+      return;
+    }
     setContentList((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, ...updates, updatedAt: new Date().toISOString() } : item))
+      prev.map((item) => item.id === id ? { ...item, ...updates, updatedAt: new Date().toISOString() } : item)
     );
-    try {
-      await setDoc(doc(db, 'content', id), { ...updates, updatedAt: new Date().toISOString() }, { merge: true });
-    } catch (e) {}
   };
 
   const deleteContent = async (id: string) => {
-    setContentList((prev) => prev.filter((i) => i.id !== id));
-    if (selectedContentItem?.id === id) {
-      setSelectedContentItem(null);
+    if (cloudSession()) {
+      await deleteDoc(doc(db, 'content', id));
+    } else {
+      setContentList((prev) => prev.filter((item) => item.id !== id));
     }
+    if (selectedContentItem?.id === id) setSelectedContentItem(null);
   };
 
   const scheduleContent = async (id: string, scheduledDate: string) => {
     await updateContent(id, {
       scheduledAt: scheduledDate,
+      workflowStatus: 'APPROVED',
       status: 'SCHEDULED',
     });
   };
 
-  // Helper to compute overall status from individual platform states
-  const calculateGlobalStatus = (platformStatus: Record<Platform, PlatformPublishStatus>, activePlatforms: Platform[]): GlobalPublishStatus => {
-    const statuses = activePlatforms.map((p) => platformStatus[p]);
-    const allPublished = statuses.every((s) => s === 'PUBLISHED');
-    if (allPublished) return 'PUBLISHED';
-    const allFailed = statuses.every((s) => s === 'FAILED');
-    if (allFailed) return 'FAILED';
-    const anyPublishing = statuses.some((s) => s === 'PUBLISHING' || s === 'STAGED' || s === 'CLAIMED');
-    if (anyPublishing) return 'PUBLISHING';
-    const anyQueued = statuses.some((s) => s === 'QUEUED');
-    if (anyQueued) return 'QUEUED';
-    const anyPublished = statuses.some((s) => s === 'PUBLISHED');
-    if (anyPublished) return 'PARTIAL';
-    return 'DRAFT';
+  const reviewContent = async (id: string) => updateContent(id, { workflowStatus: 'IN_REVIEW', status: 'DRAFT' });
+  const approveContent = async (id: string) => updateContent(id, { workflowStatus: 'APPROVED' });
+  const requestContentChanges = async (id: string) => updateContent(id, { workflowStatus: 'CHANGES_REQUESTED', status: 'DRAFT' });
+
+  const makeJob = (item: ContentItem, platform: Platform, status: PlatformPublishStatus = 'QUEUED'): PublishingJob => {
+    const existing = jobs.find((candidate) => candidate.id === 'job_' + item.id + '_' + platform);
+    const account = accounts.find((candidate) => candidate.brandId === item.brandId && candidate.platform === platform);
+    return {
+      ...(existing || {}),
+      id: 'job_' + item.id + '_' + platform,
+      organizationId: item.organizationId || user?.organizationId || DEFAULT_ORGANIZATION_ID,
+      contentId: item.id,
+      brandId: item.brandId,
+      platform,
+      accountHandle: account?.handle || '@brand_' + item.brandId + '_' + platform,
+      status,
+      scheduledAt: new Date().toISOString(),
+      retryCount: existing?.retryCount || 0,
+      maxRetries: existing?.maxRetries || 3,
+      createdAt: existing?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
   };
 
-  // Core Publishing Pipeline
-  const publishNow = async (contentId: string, specificPlatforms?: Platform[]) => {
-    const item = contentList.find((c) => c.id === contentId);
+  const persistJob = async (job: PublishingJob) => {
+    if (cloudSession()) await updateFirestoreJob(job);
+    else setJobs((prev) => [job, ...prev.filter((item) => item.id !== job.id)]);
+  };
+
+  const runMockJob = async (job: PublishingJob, item: ContentItem) => {
+    const result = await publisherService.getMockAdapter().publishJob(job, item, async (event) => {
+      const eventRecord: PublishingEvent = {
+        ...event,
+        id: 'evt_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+        organizationId: item.organizationId || user?.organizationId || DEFAULT_ORGANIZATION_ID,
+      };
+      if (cloudSession()) await setDoc(doc(db, 'publishing_events', eventRecord.id), eventRecord);
+      else setEvents((prev) => [eventRecord, ...prev].slice(0, 100));
+
+      const platformStatus = { ...item.platformStatus, [job.platform]: event.status };
+      if (cloudSession()) {
+        await updateFirestoreJob({ ...job, status: event.status, updatedAt: new Date().toISOString() });
+        await updateFirestoreContent(item.id, {
+          platformStatus,
+          status: replaceContentStatus(platformStatus, item.platforms),
+        });
+      } else {
+        setJobs((prev) => prev.map((candidate) => candidate.id === job.id ? { ...candidate, status: event.status, updatedAt: new Date().toISOString() } : candidate));
+        setContentList((prev) => prev.map((candidate) => candidate.id === item.id ? { ...candidate, platformStatus, status: replaceContentStatus(platformStatus, item.platforms), updatedAt: new Date().toISOString() } : candidate));
+      }
+    });
+
+    const finalStatus: PlatformPublishStatus = result.success ? 'PUBLISHED' : 'FAILED';
+    const finalJob: PublishingJob = {
+      ...job,
+      status: finalStatus,
+      postUrl: result.postUrl,
+      errorMessage: result.errorMessage,
+      publishedAt: result.success ? new Date().toISOString() : undefined,
+      failedAt: result.success ? undefined : new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    await persistJob(finalJob);
+
+    const nextPlatformStatus = { ...item.platformStatus, [job.platform]: finalStatus };
+    const nextContent = {
+      platformStatus: nextPlatformStatus,
+      status: replaceContentStatus(nextPlatformStatus, item.platforms),
+      platformPostUrls: { ...(item.platformPostUrls || {}), ...(result.postUrl ? { [job.platform]: result.postUrl } : {}) },
+      platformErrors: { ...(item.platformErrors || {}), ...(result.errorMessage ? { [job.platform]: result.errorMessage } : {}) },
+    };
+    if (cloudSession()) await updateFirestoreContent(item.id, nextContent);
+    else setContentList((prev) => prev.map((candidate) => candidate.id === item.id ? { ...candidate, ...nextContent, updatedAt: new Date().toISOString() } : candidate));
+  };
+
+  const publishNow = async (contentId: string, specificPlatforms?: Platform[], overrideItem?: ContentItem) => {
+    const item = overrideItem || contentList.find((candidate) => candidate.id === contentId);
     if (!item) return;
+    const targets = (specificPlatforms || item.platforms).filter((platform) => item.platforms.includes(platform));
+    if (!targets.length) return;
 
-    const targetPlatforms = specificPlatforms || item.platforms;
-    if (targetPlatforms.length === 0) return;
+    const platformStatus = { ...item.platformStatus };
+    targets.forEach((platform) => { platformStatus[platform] = 'QUEUED'; });
+    const queuedItem = {
+      ...item,
+      workflowStatus: 'APPROVED' as const,
+      status: 'QUEUED' as const,
+      platformStatus,
+      updatedAt: new Date().toISOString(),
+    };
 
-    // 1. Mark target platforms as QUEUED
-    const updatedPlatformStatus = { ...item.platformStatus };
-    targetPlatforms.forEach((p) => {
-      updatedPlatformStatus[p] = 'QUEUED';
-    });
+    if (cloudSession()) await setDoc(doc(db, 'content', item.id), queuedItem, { merge: true });
+    else setContentList((prev) => prev.map((candidate) => candidate.id === item.id ? queuedItem : candidate));
 
-    const newGlobalStatus = calculateGlobalStatus(updatedPlatformStatus, item.platforms);
-
-    setContentList((prev) =>
-      prev.map((c) =>
-        c.id === contentId
-          ? {
-              ...c,
-              status: newGlobalStatus,
-              platformStatus: updatedPlatformStatus,
-              updatedAt: new Date().toISOString(),
-            }
-          : c
-      )
-    );
-
-    // 2. Create and execute publishing jobs for each platform asynchronously
-    targetPlatforms.forEach(async (platform) => {
-      // Find matching social account for this brand and platform
-      const account = accounts.find((a) => a.brandId === item.brandId && a.platform === platform);
-      const accountHandle = account ? account.handle : `@brand_${item.brandId}_${platform}`;
-
-      const jobId = `job_${Date.now().toString(36)}_${platform}_${Math.random().toString(36).substring(2, 5)}`;
-      const newJob: PublishingJob = {
-        id: jobId,
-        contentId: item.id,
-        brandId: item.brandId,
-        platform,
-        accountHandle,
-        status: 'QUEUED',
-        retryCount: 0,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-
-      setJobs((prev) => [newJob, ...prev]);
-
-      // Progress event handler
-      const handleProgress = (event: Omit<PublishingEvent, 'id'>) => {
-        const fullEvent: PublishingEvent = {
-          ...event,
-          id: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-        };
-        setEvents((prev) => [fullEvent, ...prev.slice(0, 100)]); // Keep last 100 events
-
-        // Update current platform status
-        setContentList((currentList) =>
-          currentList.map((c) => {
-            if (c.id === contentId) {
-              const pStatus = { ...c.platformStatus, [platform]: event.status };
-              return {
-                ...c,
-                status: calculateGlobalStatus(pStatus, c.platforms),
-                platformStatus: pStatus,
-              };
-            }
-            return c;
-          })
-        );
-
-        setJobs((currentJobs) =>
-          currentJobs.map((j) => (j.id === jobId ? { ...j, status: event.status, updatedAt: new Date().toISOString() } : j))
-        );
-      };
-
-      // Execute via adapter
-      const result = await publisherService.publishPlatformJob(newJob, item, handleProgress);
-
-      // Final status update for this platform
-      setContentList((currentList) =>
-        currentList.map((c) => {
-          if (c.id === contentId) {
-            const pStatus = { ...c.platformStatus, [platform]: result.success ? ('PUBLISHED' as const) : ('FAILED' as const) };
-            const pUrls = { ...c.platformPostUrls, ...(result.postUrl ? { [platform]: result.postUrl } : {}) };
-            const pErrs = { ...c.platformErrors, ...(result.errorMessage ? { [platform]: result.errorMessage } : {}) };
-
-            return {
-              ...c,
-              status: calculateGlobalStatus(pStatus, c.platforms),
-              platformStatus: pStatus,
-              platformPostUrls: pUrls,
-              platformErrors: pErrs,
-              updatedAt: new Date().toISOString(),
-            };
-          }
-          return c;
-        })
-      );
-
-      setJobs((currentJobs) =>
-        currentJobs.map((j) =>
-          j.id === jobId
-            ? {
-                ...j,
-                status: result.success ? 'PUBLISHED' : 'FAILED',
-                postUrl: result.postUrl,
-                errorMessage: result.errorMessage,
-                publishedAt: result.success ? new Date().toISOString() : undefined,
-                failedAt: !result.success ? new Date().toISOString() : undefined,
-                updatedAt: new Date().toISOString(),
-              }
-            : j
-        )
-      );
-    });
+    for (const platform of targets) {
+      const job = makeJob(queuedItem, platform, 'QUEUED');
+      await persistJob(job);
+      if (publisherMode === 'mock') await runMockJob(job, queuedItem);
+    }
   };
 
   const retryPublish = async (contentId: string, platform?: Platform) => {
-    const item = contentList.find((c) => c.id === contentId);
+    const item = contentList.find((candidate) => candidate.id === contentId);
     if (!item) return;
+    const targets = platform ? [platform] : item.platforms.filter((candidate) => ['FAILED', 'FAILED_PERMANENT'].includes(item.platformStatus[candidate]));
+    if (!targets.length) return;
 
-    if (platform) {
-      await publishNow(contentId, [platform]);
-    } else {
-      // Find all failed platforms on this item
-      const failedPlatforms = item.platforms.filter((p) => item.platformStatus[p] === 'FAILED');
-      if (failedPlatforms.length > 0) {
-        await publishNow(contentId, failedPlatforms);
-      } else {
-        await publishNow(contentId, item.platforms);
-      }
+    const platformStatus = { ...item.platformStatus };
+    targets.forEach((target) => { platformStatus[target] = 'RETRY_PENDING'; });
+    const retryItem = {
+      ...item,
+      workflowStatus: 'APPROVED' as const,
+      status: 'QUEUED' as const,
+      platformStatus,
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (cloudSession()) await setDoc(doc(db, 'content', item.id), retryItem, { merge: true });
+    else setContentList((prev) => prev.map((candidate) => candidate.id === item.id ? retryItem : candidate));
+
+    for (const target of targets) {
+      const job = makeJob(retryItem, target, 'RETRY_PENDING');
+      await persistJob(job);
+      if (publisherMode === 'mock') await runMockJob(job, retryItem);
     }
   };
 
@@ -585,9 +711,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
 
       newItems.push(item);
+      if (cloudSession()) await setDoc(doc(db, 'content', item.id), item);
     }
 
-    if (newItems.length > 0) {
+    if (newItems.length > 0 && !cloudSession()) {
       setContentList((prev) => [...newItems, ...prev]);
     }
 
@@ -615,6 +742,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateContent,
         deleteContent,
         scheduleContent,
+        reviewContent,
+        approveContent,
+        requestContentChanges,
         publishNow,
         retryPublish,
         jobs,
