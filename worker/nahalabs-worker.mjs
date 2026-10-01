@@ -26,7 +26,7 @@ const CONFIG = {
   pollIntervalMs: Number(process.env.POLL_INTERVAL_MS || 5000),
   heartbeatIntervalMs: Number(process.env.HEARTBEAT_INTERVAL_MS || 15000),
   autoSocialUrl: process.env.AUTOSOCIAL_URL || 'http://127.0.0.1:3000',
-  autoSocialPath: process.env.AUTOSOCIAL_PATH || 'C:\\Users\\Thabiso\\AutoSocial',
+  autoSocialPath: process.env.AUTOSOCIAL_PATH || 'C:\\Users\\nahat\\AutoSocial',
   autoSocialSchedulerEnabled: String(process.env.AUTOSOCIAL_SCHEDULER_ENABLED || 'false').toLowerCase() === 'true',
 };
 
