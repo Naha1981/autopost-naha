@@ -77,6 +77,16 @@ foreach ($platform in $platforms) {
   Set-Content -Path (Join-Path $pending "nahalabs-autopost-proof.description") -Value "NahaLabs free AutoPost proof. Local open-source publishing test." -Encoding UTF8
 }
 
+
+# Start all local schedulers automatically so no dashboard click is needed.
+foreach ($route in @("/api/start", "/api/instagram/start", "/api/youtube/start")) {
+  try {
+    Invoke-RestMethod -Uri ("http://127.0.0.1:3000" + $route) -Method Post -ContentType "application/json" -Body "{}" | Out-Null
+  } catch {
+    Write-Warning ("Could not start scheduler " + $route + ": " + $_.Exception.Message)
+  }
+}
+
 Start-Process "http://127.0.0.1:3000"
 Write-Host ""
 Write-Host "AUTOPOST ENGINE IS RUNNING." -ForegroundColor Green
