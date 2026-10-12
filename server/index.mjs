@@ -571,7 +571,7 @@ function isLoopbackRequest(req) {
   // Never trust Host/X-Forwarded-Host to grant a development auth bypass.
   // The development proxy connects directly to this server, so inspect the
   // actual socket-derived Express IP and require loopback explicitly.
-  const address = String(req.ip || '').replace(/^::ffff:/, '');
+  const address = String(req.socket?.remoteAddress || '').replace(/^::ffff:/, '');
   return ['127.0.0.1', '::1'].includes(address);
 }
 
