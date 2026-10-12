@@ -568,10 +568,11 @@ const AI_REQUEST_TIMEOUT_MS = Math.min(45000, Math.max(3000, Number(process.env.
 const aiRateLimit = new Map();
 
 function isLoopbackRequest(req) {
-  const hostname = String(req.hostname || '').toLowerCase().replace(/^\[|\]$/g, '');
+  // Never trust Host/X-Forwarded-Host to grant a development auth bypass.
+  // The development proxy connects directly to this server, so inspect the
+  // actual socket-derived Express IP and require loopback explicitly.
   const address = String(req.ip || '').replace(/^::ffff:/, '');
-  return ['localhost', '127.0.0.1', '::1'].includes(hostname)
-    || ['127.0.0.1', '::1'].includes(address);
+  return ['127.0.0.1', '::1'].includes(address);
 }
 
 async function authenticateAiUser(req, res, next) {
@@ -638,6 +639,15 @@ app.post('/api/ai/generate-caption', authenticateAiUser, async function (req, re
   const actor = String(req.aiActorId || req.ip || 'unknown');
   const windowMs = 60 * 1000;
   const maxPerWindow = 20;
+  // Bound in-memory limiter growth if many unique actors/addresses hit this route.
+  if (aiRateLimit.size > 10000) {
+    for (const [key, entry] of aiRateLimit) {
+      if (now - entry.startedAt >= windowMs) aiRateLimit.delete(key);
+    }
+    if (aiRateLimit.size > 10000) {
+      return res.status(503).json({ ok: false, error: 'Caption service is busy. Try again shortly.' });
+    }
+  }
   const state = aiRateLimit.get(actor);
   if (!state || now - state.startedAt >= windowMs) {
     aiRateLimit.set(actor, { startedAt: now, count: 1 });
@@ -732,7 +742,7 @@ app.post('/api/ai/generate-caption', authenticateAiUser, async function (req, re
         caption: fallback,
         engine: 'template-fallback',
         platform: input.platform,
-        warning: 'Local AI was unavailable (' + String(error.message || 'request failed').slice(0, 180) + '). This draft was made from deterministic templates, not by an LLM.',
+        warning: 'Local AI was unavailable. This draft was made from deterministic templates, not by an LLM.',
       });
     } finally {
       clearTimeout(timeout);
