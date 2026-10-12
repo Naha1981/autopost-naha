@@ -81,11 +81,16 @@ Do not expose the model runtime's port to the public internet. Keep Ollama on lo
 | Alternative publisher | [Postiz](https://github.com/gitroomhq/postiz-app) | AGPL-3.0. Self-hostable and supports many channels. Some built-in AI workflows expect provider keys; make our own local AI gateway authoritative rather than assuming all bundled AI works offline. |
 | Local text model runtime and first model | [Ollama](https://github.com/ollama/ollama) + [Qwen3 4B](https://ollama.com/library/qwen3:4b) | Ollama runtime MIT; Qwen3 4B Q4_K_M model package lists Apache-2.0 and a ~2.5 GB model download. Test memory, latency and output quality locally; weight file size is not the same as total RAM/VRAM needed. |
 | Local image generation | [ComfyUI](https://github.com/comfyanonymous/ComfyUI) + [FLUX.1-schnell](https://github.com/black-forest-labs/flux/blob/main/model_cards/FLUX.1-schnell.md) | ComfyUI GPL-3.0; FLUX.1-schnell model card lists Apache-2.0 and supports local inference. 12B parameters: benchmark actual memory/speed before promising reliable local image generation. |
+| Agent-native short-video renderer | [HyperFrames](https://github.com/heygen-com/hyperframes) | Apache-2.0, actively released (v0.8.135 in October 2026), HTML/CSS-based deterministic MP4 composition with agent-oriented workflows and no per-render vendor fee. **Preferred for new automated-video product features.** Audit third-party media/fonts separately. |
+| Existing Remotion videos | [Remotion](https://www.remotion.dev/docs/license/pricing) | Current official pricing says its Automators product-rendering tier is $0.01 per render with $100/month minimum, even though a free license exists for individuals/companies up to 3 people under terms. Keep existing local use only where license fits; do not make it the core high-volume SaaS renderer. |
+| Short-video automation | [MoneyPrinterTurbo](https://github.com/Ahsan-Dogar/MoneyPrinterTurbo) | MIT. Already in our tool stack. It can assemble script/footage/subtitles/music, but default integrations may request external provider keys; audit provider calls and route text generation through local Ollama, using local/properly licensed media. |
+| Local voiceover | [Kokoro-82M](https://github.com/hexgrad/kokoro) + [model card](https://huggingface.co/hexgrad/Kokoro-82M) | Apache-2.0 inference library and model weights. Test voice quality/language coverage on South African English; retain existing eSpeak as a simple offline fallback. |
+| Local transcription | [Whisper](https://github.com/openai/whisper) | MIT speech-to-text/translation. Reuse existing Content OS subtitle tools first; add Whisper only where accurate transcript timing is missing. |
 | Social listening | [Harken](https://github.com/VladUZH/harken) | MIT, local SQLite, no-key defaults include Hacker News and Bluesky; other connector coverage/configuration must be tested. Not a universal Facebook/Instagram/LinkedIn listener. |
 | Video assembly | [FFmpeg](https://github.com/FFmpeg/FFmpeg) | Already in NahaLabs stack. Build options/codecs affect licence obligations; preserve notices and audit packaged binaries before redistribution. |
 | Workflow glue | [Activepieces](https://github.com/activepieces/activepieces) | MIT core; enterprise folders/features are commercial-licensed. Use only if our existing scheduler/API is insufficient. Avoid making paid/EE features a required dependency. |
 | Social intent research | Existing Demand Radar + Jev Social / bounded browser sources | Research/discovery only, with source attribution and exact permalink verification. Public code does not mean the target site's data/API is free. |
-| Captions/voiceover/subtitles | NahaLabs Content OS + eSpeak + FFmpeg | Reuse; deterministic fallback works without a cloud provider. |
+| Captions/voiceover/subtitles | NahaLabs Content OS + local models + eSpeak/FFmpeg | Reuse the existing provider-free pipeline; deterministic fallback works without a cloud provider. |
 | Stock media | User-owned or permissively licensed assets; optional official provider connector | Do not make any paid stock API a dependency. Record asset provenance and licence. |
 
 ## Official social API reality
@@ -135,7 +140,8 @@ This is a first code slice, **not yet verified as production-ready**. Run typech
 ### Phase 2 — Proper creative studio
 - Add text, image, carousel and video content records, separate from the current video-only requirement.
 - Add brand kits, templates, image dimensions and platform previews.
-- Reuse Content OS for FFmpeg/eSpeak/subtitles, and ComfyUI only for local creative workflows where the model license and hardware are approved.
+- Reuse Content OS for FFmpeg/eSpeak/subtitles. Benchmark HyperFrames as the no-per-render-fee renderer for new automated video. Use ComfyUI + FLUX.1-schnell only where hardware and weights' commercial licence are approved; test Kokoro for voiceovers and keep eSpeak as fallback.
+- Avoid making Remotion the core render engine for a paid SaaS: its current Automators tier lists a $100/month minimum.
 - Add source files, generated variants, revision history and provenance.
 
 ### Phase 3 — Approved publishing
