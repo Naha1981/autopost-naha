@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Sparkles, LoaderCircle, WandSparkles, AlertTriangle } from 'lucide-react';
 import { auth } from '../services/firebase';
 import { Platform } from '../types';
@@ -41,7 +41,7 @@ export const CaptionAssistant: React.FC<CaptionAssistantProps> = ({
     () => platforms.length ? platforms : (['instagram'] as Platform[]),
     [platforms]
   );
-  const [platform, setPlatform] = useState<Platform>(availablePlatforms[0]);
+  const [platform, setPlatform] = useState<Platform>(availablePlatforms[0] || 'instagram');
   const [tone, setTone] = useState<Tone>('professional');
   const [objective, setObjective] = useState<Objective>('awareness');
   const [audience, setAudience] = useState('');
@@ -51,6 +51,10 @@ export const CaptionAssistant: React.FC<CaptionAssistantProps> = ({
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [engine, setEngine] = useState<'ollama' | 'template-fallback' | ''>('');
+
+  useEffect(() => {
+    if (!availablePlatforms.includes(platform)) setPlatform(availablePlatforms[0] || 'instagram');
+  }, [availablePlatforms, platform]);
 
   const generate = async () => {
     if (!title.trim()) {
@@ -110,6 +114,11 @@ export const CaptionAssistant: React.FC<CaptionAssistantProps> = ({
           <p className="mt-1 text-[11px] leading-relaxed text-slate-600">
             Draft a platform-specific caption. Nothing is published automatically.
           </p>
+          {platforms.length > 1 && (
+            <p className="mt-1 text-[10px] leading-relaxed text-amber-800">
+              The current composer stores one shared caption for every checked platform. Review the wording before publishing across channels.
+            </p>
+          )}
         </div>
         <span className="rounded-full border border-violet-200 bg-white px-2 py-1 text-[10px] font-semibold text-violet-800">
           No paid AI API
