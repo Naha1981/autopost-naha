@@ -117,7 +117,7 @@ Branch: `feat/zero-cost-ai-caption-studio`
 - Nothing auto-publishes. A human must review the caption and use the existing publishing workflow.
 - The existing content data model has a single caption shared across selected channels. Per-platform caption storage is a next milestone; the UI warns when multiple channels are selected.
 
-This is a first code slice, **not yet verified as production-ready**. Run typecheck and server syntax checks, test both authenticated and local-demo modes, and verify model response handling before merge.
+This is a first code slice, **not yet verified as production-ready**. GitHub Actions passed dependency installation, server/worker syntax checks, TypeScript checking, and the Vite production build on code commit `f164e6c`; the subsequent change was documentation-only. Local Ollama inference, authentication behavior against a live Firebase setup, rate limits and real platform publishing have not been end-to-end tested. Keep the PR in draft until those runtime checks pass.
 
 ## Immediate run/test procedure
 
@@ -132,7 +132,7 @@ This is a first code slice, **not yet verified as production-ready**. Run typech
 
 ### Phase 1 — Local content generation (now)
 - [x] Create branch and add Local AI Caption Studio slice.
-- [ ] Pass TypeScript, Node syntax and production build checks.
+- [x] GitHub Actions passed dependency installation, server/worker syntax checks, TypeScript checking and production build on code commit `f164e6c`.
 - [ ] Add tests for input validation, rate limits, auth, local model success, timeout and fallback.
 - [ ] Test selected model quality on South African client briefs and record latency on actual hardware.
 - [ ] Make per-platform captions first-class in the content schema.
