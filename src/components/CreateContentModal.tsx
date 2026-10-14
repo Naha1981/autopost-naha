@@ -16,6 +16,7 @@ import { useApp } from '../context/AppContext';
 import { SAMPLE_VIDEOS } from '../data/initialData';
 import { mediaStorageService } from '../services/media/MediaStorageService';
 import { Platform } from '../types';
+import { CaptionAssistant } from './CaptionAssistant';
 
 interface CreateContentModalProps {
   onClose: () => void;
@@ -255,6 +256,13 @@ export const CreateContentModal: React.FC<CreateContentModalProps> = ({ onClose 
 
           {/* Caption */}
           <div>
+            <CaptionAssistant
+              brandName={brands.find((brand) => brand.id === brandId)?.name || ''}
+              brandDescription={brands.find((brand) => brand.id === brandId)?.description || ''}
+              title={title}
+              platforms={platforms}
+              onGenerated={setCaption}
+            />
             <div className="flex items-center justify-between mb-1.5">
               <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
                 Post Caption & Hashtags <span className="text-rose-500">*</span>

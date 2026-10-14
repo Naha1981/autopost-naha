@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - feat/cloud-worker-integration
+      - feat/zero-cost-ai-caption-studio
   pull_request:
     branches:
       - main
@@ -20,7 +21,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: npm
 
       - name: Install dependencies
         run: npm install

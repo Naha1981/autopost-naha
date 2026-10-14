@@ -17,6 +17,11 @@ export default defineConfig(() => {
       hmr: process.env.DISABLE_HMR !== 'true',
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      // The Express API runs on PORT=8080 while Vite serves the development UI.
+      // In production, Express serves both the built UI and API on the same origin.
+      proxy: {
+        '/api': { target: process.env.NAHALABS_API_PROXY || 'http://127.0.0.1:8080', changeOrigin: false },
+      },
     },
   };
 });
